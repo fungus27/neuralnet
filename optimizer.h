@@ -14,7 +14,7 @@ typedef struct {
     float (*train)(neural_network *nn, float *inputs, float *expected_outputs, unsigned int minibatch_size, void *state);
 
     // NOTE: the number of parameters and their types are per optimizer
-    void (*initialize_state)(void **state, neural_network *nn, ...);
+    void (*initialize_state)(void **state, neural_network *nn, unsigned int loss_id, ...);
     //void (*reset_state)(void *state);
     void (*free_state)(void *state);
 
@@ -24,5 +24,6 @@ typedef struct {
 } optimizer;
 
 optimizer get_optimizer(unsigned int optimizer_id);
+float test_class_nn(neural_network *nn, unsigned int loss_id, float *test_inputs, unsigned char *test_outputs, unsigned int set_count, float *accuracy);
 
 #endif // OPTIMIZER_H

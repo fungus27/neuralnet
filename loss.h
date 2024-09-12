@@ -2,7 +2,8 @@
 #define LOSS_H
 
 enum loss_ids {
-    NN_LOSS_MEAN_SQUARE = 0
+    NN_LOSS_MEAN_SQUARE = 0,
+    NN_LOSS_CATEGORICAL_CROSS_ENTROPY
 };
 
 typedef struct {

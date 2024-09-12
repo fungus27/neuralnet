@@ -47,10 +47,12 @@ void read_data(char *images_name, char *labels_name, float *inputs, float *expec
         assert(rows == 28 && cols == 28);
 
         for (unsigned int i = 0; i < number_of_images; ++i) {
-            for (unsigned int j = 0; j < rows * cols; ++j) {
-                unsigned char pixel;
-                fread(&pixel, sizeof(unsigned char), 1, f_images);
-                inputs[i * rows * cols + j] = pixel/255.0f;
+            for (unsigned int x = 0; x < rows; ++x) {
+                for (int y = cols - 1; y >= 0; --y) {
+                    unsigned char pixel;
+                    fread(&pixel, sizeof(unsigned char), 1, f_images);
+                    inputs[i * rows * cols + y * cols + x] = pixel/255.0f;
+                }
             }
         }
 
@@ -84,39 +86,71 @@ void read_data(char *images_name, char *labels_name, float *inputs, float *expec
     }
 }
 
-void softmax(float *input, unsigned int count, float *exped) {
-#ifdef NN_SOFTMAX_UNSTABLE
-    float sum = 0.0f;
+int main() {
+    // TODO: move loss and gradient calculation into optimizer
+    // TODO: implement various layer types (softmax)
+    // TODO: merge state into optimizer struct
+    // TODO: plurarize initialization function names
 
-    for (unsigned int i = 0; i < count; ++i) {
-        exped[i] = expf(input[i]);
-        sum += exped[i];
+    srand(10953);
+
+    float *inputs = malloc(60000 * 28 * 28 * sizeof(float));
+    float *expected_outputs = malloc(60000 * 10 * sizeof(float));
+    unsigned char *labels = malloc(60000 * sizeof(unsigned char));
+    read_data("mnist/train-images-idx3-ubyte", "mnist/train-labels-idx1-ubyte", inputs, expected_outputs, labels);
+
+    float *test_inputs = malloc(10000 * 28 * 28 * sizeof(float));
+    unsigned char *test_labels = malloc(10000 * sizeof(unsigned char));
+    read_data("mnist/t10k-images-idx3-ubyte", "mnist/t10k-labels-idx1-ubyte", test_inputs, NULL, test_labels);
+
+    neural_network nn;
+    unsigned int layer_sizes[] = {784, 300, 10};
+    //unsigned int activation_ids[] = {NN_ACTIVATION_RELU, NN_ACTIVATION_SOFTMAX};
+    unsigned int activation_ids[] = {NN_ACTIVATION_ALG_SIGMOID, NN_ACTIVATION_ALG_SIGMOID};
+    //unsigned int activation_ids[] = {NN_ACTIVATION_RELU, NN_ACTIVATION_ALG_SIGMOID};
+
+    initialize_nn(&nn, 3, layer_sizes, activation_ids);
+
+    optimizer optimizer = get_optimizer(NN_OPTIMIZER_ADAM);
+    void *state;
+    optimizer.initialize_state(&state, &nn, NN_LOSS_MEAN_SQUARE, 0.0005f, 0.99f, 0.999f, 0.00001f);
+
+    unsigned int batch_size = 100;
+
+    //float last_loss = 0.0f;
+    //for (unsigned int j = 0; j < 1000; ++j) {
+    //    float loss = optimizer.train(&nn, inputs, expected_outputs, batch_size, state);
+
+    //    printf("epoch: %u, avg loss: %4.3f, loss delta: %4.3f\n", j, loss, loss - last_loss);
+    //    last_loss = loss;
+    //}
+
+    float loss;
+    for (unsigned int i = 0; i < 5; ++i) {
+        loss = 0.0f;
+        for (unsigned int j = 0; j < 60000; j += batch_size)
+            loss += optimizer.train(&nn, inputs + j * 28 * 28, expected_outputs + j * 10, batch_size, state);
+        float acc;
+        float test_loss = test_class_nn(&nn, NN_LOSS_MEAN_SQUARE, test_inputs, test_labels, 10000, &acc);
+        printf("epoch: %u, avg loss: %4.3f, avg test loss: %4.3f, acc: %4.2f\n", i, loss/60000 * batch_size, test_loss, acc);
     }
 
-    bli_sinvscalv(BLIS_NO_CONJUGATE, count, &sum, exped, 1);
-#else
-    unsigned int max_index;
-    bli_samaxv(count, input, 1, &max_index);
-    float max = input[max_index];
+    optimizer.free_state(state);
 
-    float sum = 0.0f;
+    //FILE *saved = fopen("test.nn", "w");
+    //save_nn(&nn, saved);
+    //fclose(saved);
 
-    for (unsigned int i = 0; i < count; ++i) {
-        exped[i] = expf(input[i] - max);
-        sum += exped[i];
-    }
+    free_nn(&nn);
 
-    bli_sinvscalv(BLIS_NO_CONJUGATE, count, &sum, exped, 1);
-#endif
+    free(inputs);
+    free(expected_outputs);
+    free(labels);
+    free(test_inputs);
+    free(test_labels);
 }
 
 //int main() {
-//    // TODO: move loss and gradient calculation into optimizer
-//    // TODO: implement various layer types (softmax)
-//    // TODO: merge state into optimizer struct
-//    // TODO: plurarize initialization function names
-//    srand(10933);
-//
 //    float *inputs = malloc(60000 * 28 * 28 * sizeof(float));
 //    float *expected_outputs = malloc(60000 * 10 * sizeof(float));
 //    unsigned char *labels = malloc(60000 * sizeof(unsigned char));
@@ -127,41 +161,26 @@ void softmax(float *input, unsigned int count, float *exped) {
 //    read_data("mnist/t10k-images-idx3-ubyte", "mnist/t10k-labels-idx1-ubyte", test_inputs, NULL, test_labels);
 //
 //    neural_network nn;
-//    unsigned int layer_sizes[] = {784, 300, 2, 300, 784};
-//    unsigned int activation_ids[] = {NN_ACTIVATION_RELU, NN_ACTIVATION_ALG_SIGMOID, NN_ACTIVATION_RELU, NN_ACTIVATION_ALG_SIGMOID};
+//    unsigned int layer_sizes[] = {784, 300, 50, 10};
+//    unsigned int activation_ids[] = {NN_ACTIVATION_RELU, NN_ACTIVATION_RELU, NN_ACTIVATION_SOFTMAX};
 //
-//    initialize_nn(&nn, 4, layer_sizes, NN_LOSS_MEAN_SQUARE, activation_ids);
+//    initialize_nn(&nn, 4, layer_sizes, activation_ids);
+//    float output[10];
+//    char temp[100];
 //
-//    optimizer adam = get_optimizer(NN_OPTIMIZER_ADAM);
-//    void *state;
-//    adam.initialize_state(&state, &nn, 0.01f, 0.99f, 0.999f, 0.00000001f);
-//
-//    unsigned int batch_size = 100;
-//
-//    for (unsigned int j = 0; j < 20; ++j) {
-//        float loss = 0.0f;
-//        for (unsigned int i = 0; i < 60000; i += batch_size) {
-//            loss += adam.train(&nn, inputs + i * 28 * 28, inputs + i * 28 * 28, batch_size, state);
-//        }
-//        printf("epoch: %u, avg loss: %4.3f\n", j, loss/60000 * batch_size);
+//    for (unsigned int i = 0; i < 60000; ++i) {
+//        evaluate_nn(&nn, inputs + i * 28 * 28, output);
+//        //for (unsigned int j = 0; j < 10; ++j)
+//        //    printf("%4.2f ", output[j]);
+//        //printf("\n");
+//        //scanf("%s", temp);
 //    }
 //
-//    adam.free_state(state);
-//
-//    FILE *saved = fopen("reconstructor.nn", "w");
-//    save_nn(&nn, saved);
-//    fclose(saved);
-//
 //    free_nn(&nn);
-//
 //    free(inputs);
 //    free(expected_outputs);
 //    free(labels);
+//    free(test_inputs);
+//    free(test_labels);
 //}
 
-int main() {
-    float input[6] = {-4.5f, -1.f, 3.0f, -2.0f, 8.0f, 4.0f};
-    float output[6];
-    softmax(input, 6, output);
-    bli_sprintv("", 6, output, 1, "%4.2f", "");
-}
